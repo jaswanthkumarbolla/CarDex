@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "scanned_cars": {
+      "title": "Scanned Cars",
+      "description": "Scanned and detected automotive entries shared across all devices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "year": { "type": "string" },
+        "topSpeed": { "type": "string" },
+        "horsepower": { "type": "string" },
+        "engine": { "type": "string" },
+        "price": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "scannedAt": { "type": "string" }
+      },
+      "required": ["name", "brand"]
+    }
+  }
+}

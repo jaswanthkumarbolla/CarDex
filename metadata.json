@@ -1,0 +1,6 @@
+{
+  "name": "CarDex",
+  "description": "A sleek, modern, retro-pixelated Pokédex-style digital interface showcasing comprehensive automotive data, historical performance stats, and vintage restoration insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
