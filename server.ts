@@ -9,6 +9,9 @@ import { CarDexEntry } from "./src/types";
 import { detectCar } from "./src/services/gemini";
 import { mapDetectionToEntry } from "./src/utils/carMapper";
 import { carPipeline } from "./src/services/carPipeline";
+import { PgCarRepository } from "./src/repositories/pgCarRepository";
+
+const carRepo = new PgCarRepository();
 
 dotenv.config();
 
@@ -49,39 +52,11 @@ function getGeminiClient(): GoogleGenAI {
 // DATABASE & PERSISTENCE
 // ----------------------------------------------------
 
-const DB_FILE = path.join(process.cwd(), "catalog_db.json");
-
-interface DBStructure {
-  presets: CarDexEntry[];
-  embeddingCache: { embedding: number[]; entry: CarDexEntry }[];
-}
-
-function loadDB(): DBStructure {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      return {
-        presets: parsed.presets || [],
-        embeddingCache: parsed.embeddingCache || []
-      };
-    }
-  } catch (err) {
-    console.error("Failed to load catalog_db.json:", err);
-  }
-  return { presets: [], embeddingCache: [] };
-}
-
-function saveDB(data: DBStructure) {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.error("Failed to save catalog_db.json:", err);
-  }
-}
-
-// Global active database state loaded on boot
-let dbState = loadDB();
+// NOTE: Presets and the search cache now persist to Postgres (Neon) via
+// PgCarRepository instead of a local catalog_db.json file. Vercel serverless
+// functions have a read-only filesystem (aside from /tmp), and even /tmp is
+// wiped between invocations, so file-based persistence silently failed or
+// crashed the function in production. See src/repositories/pgCarRepository.ts.
 
 // ----------------------------------------------------
 // FALLBACK VECTOR GRAPHIC ASSET (No Scraped Unsplash URL Mismatch)
@@ -173,8 +148,14 @@ const carDexEntrySchema = {
 // ----------------------------------------------------
 
 // List Presets
-app.get("/api/cardex/presets", (req, res) => {
-  res.json({ success: true, list: dbState.presets });
+app.get("/api/cardex/presets", async (req, res) => {
+  try {
+    const presets = await carRepo.getAll();
+    res.json({ success: true, list: presets });
+  } catch (err: any) {
+    console.error("Failed to load presets:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to load presets." });
+  }
 });
 
 // Check API Key status safely
@@ -193,15 +174,20 @@ app.post("/api/cardex/search", async (req, res) => {
   const cleanQuery = query.toLowerCase().trim();
 
   // 1. Check inside database presets first to save resources
-  const foundPreset = dbState.presets.find(
-    (car) =>
-      car.name.toLowerCase().includes(cleanQuery) ||
-      car.brand.toLowerCase().includes(cleanQuery) ||
-      `${car.year} ${car.brand} ${car.name}`.toLowerCase().includes(cleanQuery)
-  );
+  try {
+    const allPresets = await carRepo.getAll();
+    const foundPreset = allPresets.find(
+      (car) =>
+        car.name.toLowerCase().includes(cleanQuery) ||
+        car.brand.toLowerCase().includes(cleanQuery) ||
+        `${car.year} ${car.brand} ${car.name}`.toLowerCase().includes(cleanQuery)
+    );
 
-  if (foundPreset) {
-    return res.json({ success: true, entry: foundPreset });
+    if (foundPreset) {
+      return res.json({ success: true, entry: foundPreset });
+    }
+  } catch (err) {
+    console.warn("Preset cache lookup failed, proceeding to generate:", err);
   }
 
   // 2. Generate with Gemini 3.5 Flash
@@ -238,9 +224,10 @@ app.post("/api/cardex/search", async (req, res) => {
     };
 
     // Push new search entry into actual catalog database to allow catalog database to grow over time!
-    if (!dbState.presets.some(c => c.name.toLowerCase() === completedEntry.name.toLowerCase())) {
-      dbState.presets.unshift(completedEntry);
-      saveDB(dbState);
+    try {
+      await carRepo.save(completedEntry);
+    } catch (saveErr) {
+      console.warn("Failed to persist generated entry (non-fatal):", saveErr);
     }
 
     res.json({ success: true, entry: completedEntry });

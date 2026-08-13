@@ -1,5 +1,6 @@
 import { CarDetectionResult, CarDexEntry, CarStats } from "../types";
-import { ICarRepository, JsonCarRepository } from "../repositories/carRepository";
+import { ICarRepository } from "../repositories/carRepository";
+import { PgCarRepository } from "../repositories/pgCarRepository";
 import { queryApiNinjas } from "./apiNinjas";
 import { getSpecsFromGemini } from "./geminiSpecs";
 import { mapDetectionToEntry } from "../utils/carMapper";
@@ -7,7 +8,7 @@ import { mapDetectionToEntry } from "../utils/carMapper";
 export class CarPipeline {
   private repository: ICarRepository;
 
-  constructor(repository: ICarRepository = new JsonCarRepository()) {
+  constructor(repository: ICarRepository = new PgCarRepository()) {
     this.repository = repository;
   }
 
