@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import multer from "multer";
 import { CarDexEntry } from "./src/types";
@@ -316,6 +315,11 @@ app.post("/api/detect", upload.single("image"), async (req, res) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    // Dynamic import: vite is a devDependency and must never be statically
+    // imported at module scope, or the module will fail to load in any
+    // environment where devDependencies aren't installed (e.g. Vercel
+    // serverless functions), even though this branch never runs there.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
